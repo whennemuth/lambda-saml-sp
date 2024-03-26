@@ -21,6 +21,9 @@ services:
       SAML_PK: ${SAML_PK}
       DOCKER_PROFILE: integrated
       APP_HOST: app
+      APP_AUTHORIZATION: ${APP_AUTHORIZATION}
+      APP_LOGIN_HEADER: ${APP_LOGIN_HEADER}
+      APP_LOGOUT_HEADER: ${APP_LOGOUT_HEADER}
       # DEBUG: 'true'
     ports:
       - '${EXPRESS_PORT:-5000}:${EXPRESS_PORT:-5000}'
@@ -39,6 +42,7 @@ services:
       - 443
     environment:
       EXPRESS_PORT: 443
+      APP_AUTHORIZATION: ${APP_AUTHORIZATION}
       # DEBUG: 'true'
     networks:
       wp-bridge:

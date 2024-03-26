@@ -4,7 +4,7 @@ import { IContext } from '../context/IContext';
 import { HttpOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { FunctionUrl, FunctionUrlAuthType, Runtime } from 'aws-cdk-lib/aws-lambda';
-import { AllowedMethods, CachePolicy, Distribution, LambdaEdgeEventType, OriginProtocolPolicy, OriginRequestPolicy, PriceClass, ViewerProtocolPolicy } from 'aws-cdk-lib/aws-cloudfront';
+import { AllowedMethods, CachePolicy, Distribution, LambdaEdgeEventType, OriginBindConfig, OriginBindOptions, OriginProtocolPolicy, OriginRequestPolicy, PriceClass, ViewerProtocolPolicy } from 'aws-cdk-lib/aws-cloudfront';
 import { Effect, PolicyDocument, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Bucket, ObjectOwnership } from 'aws-cdk-lib/aws-s3';
 
@@ -56,6 +56,9 @@ export class LambdaShibbolethStackResources extends Construct {
       entry: 'lib/lambda/FunctionApp.ts',
       timeout: Duration.seconds(10),
       functionName: context.APP_FUNCTION_NAME,     
+      environment: {
+        APP_AUTHORIZATION: context.APP_AUTHORIZATION
+      }
     });
 
     // Lambda function url for the web app.
@@ -84,7 +87,10 @@ export class LambdaShibbolethStackResources extends Construct {
         origin: new HttpOrigin(Fn.select(2, Fn.split('/', appFuncUrl.url)), {
           protocolPolicy: OriginProtocolPolicy.HTTPS_ONLY,
           httpsPort: 443,
-          originPath: '/',          
+          originPath: '/',
+          customHeaders: {
+            APP_AUTHORIZATION: `${'false' == context?.APP_AUTHORIZATION ? 'false' : 'true' }`
+          }       
         }),
         allowedMethods: AllowedMethods.ALLOW_ALL,
         cachedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,

@@ -13,6 +13,7 @@ COPY ./lib/lambda ./lib/lambda/
 COPY ./lib/docker/app ./lib/
 
 # Creating a dummy context.json file - will keep default imports and destructuring working.
+# This will not invalidate the cache for the second stage until the first COPY instruction is reached.
 RUN mkdir ./context && echo '{ "SHIBBOLETH": { "secret": {} } }' > context/context.json
 COPY context/IContext.ts ./context/
 
@@ -27,9 +28,8 @@ RUN npm install
 WORKDIR /app
 
 RUN \
-  esbuild ./lib/lambda/FunctionApp.ts --bundle --platform=node --outfile=app.js && \
+  esbuild ./lib/lambda/FunctionApp.ts --bundle --platform=node --outfile=./lib/app.js && \
   esbuild ./lib/entrypoint.js --bundle --platform=node --outfile=entrypoint.js
-
 
 # -----------------------------------------------------------
 #                      STAGE 2

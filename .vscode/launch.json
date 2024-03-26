@@ -57,11 +57,7 @@
       ],
       "args": [
         "${workspaceFolder}/lib/lambda/FunctionSpOrigin.test.ts",
-      ], 
-      "env": {
-        "unmocked": "false",
-        "AWS_PROFILE": "bu"
-      }   
+      ] 
     },
     {
       "type": "node",
@@ -90,7 +86,7 @@
         "--runTestsByPath", 
         "--silent",
         "-i", 
-        "${workspaceFolder}/lib/docker/entrypoint.test.js" 
+        "${workspaceFolder}/lib/docker/sp/entrypoint.test.js" 
       ],
       "runtimeArgs": [ "--experimental-vm-modules" ],
       "console": "integratedTerminal",

@@ -14,7 +14,7 @@
     "app-bundle": "esbuild ./lib/lambda/FunctionApp.js --bundle --platform=node --outfile=./lib/docker/app/app.js",
     "bundle": "npm run sp-bundle && esbuild ./lib/docker/sp/docker-entrypoint.js --bundle --platform=node --outfile=bundled-entrypoint.js",
     "install-all": "sh -c 'for line in $(find . -maxdepth 3 -name package.json -print | grep -v '/node_modules/') ; do (cd $(dirname $line) && npm install --save-dev); done;'",
-    "docker-clean": "docker rmi $(docker images --filter dangling=true -q) 2> /dev/null || true",
+    "docker-clean": "sh -c \"docker rmi $(docker images --filter dangling=true -q) 2> /dev/null || true\"",
     "up": "npm run docker-clean && docker compose up --build -d --remove-orphans",
     "down": "docker compose down"
   },

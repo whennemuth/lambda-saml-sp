@@ -1,4 +1,6 @@
 
+const { APP_AUTHORIZATION='false' } = process?.env;
+
 /**
  * This is a lambda@edge function for viewer response traffic from the application lambda function origin.
  * The purpose of this function is simply to intercept response output from the application lambda.
@@ -10,6 +12,7 @@ export const handler =  async (event:any) => {
   try {
     console.log(JSON.stringify(event, null, 2));
 
+    const appAuth = APP_AUTHORIZATION == 'true';
     const { request } = event.Records[0].cf;
     const { response } = event.Records[0].cf;
 

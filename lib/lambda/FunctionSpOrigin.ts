@@ -1,15 +1,16 @@
 import { CachedKeys, checkCache, getKeys } from './lib/Secrets';
 import { SamlTools, SamlToolsParms, SendAssertResult } from './lib/Saml';
 import { JwtTools } from './lib/Jwt';
-import { Shibboleth } from '../../context/IContext';
+import { IContext, Shibboleth } from '../../context/IContext';
 import * as contextJSON from '../../context/context.json';
 
 const jwtTools = new JwtTools();
-const context = contextJSON;
+const context = contextJSON as IContext;
 const debug = process.env?.DEBUG == 'true';
-const { entityId, entryPoint, logoutUrl, idpCert } = context.SHIBBOLETH as Shibboleth;
+const { APP_LOGIN_HEADER, APP_LOGOUT_HEADER, SHIBBOLETH } = context;
+const { entityId, entryPoint, logoutUrl, idpCert } = SHIBBOLETH as Shibboleth;
 // If running locally - not in lambda@edge function - shibboleth configs can come from the environment.
-const { ENTITY_ID, ENTRY_POINT, LOGOUT_URL, IDP_CERT } = process?.env;
+const { ENTITY_ID, ENTRY_POINT, LOGOUT_URL, IDP_CERT } = process.env;
 
 let samlTools = new SamlTools({ 
   entityId: entityId || ENTITY_ID, 
@@ -38,9 +39,15 @@ const debugPrint = (value:string) => {
   }
 }
 
+export enum AUTH_PATHS {
+  LOGIN = '/login', LOGOUT = '/logout', ASSERT = '/assert', METADATA = '/metadata', FAVICON = '/favicon.ico'
+}
+
 /**
  * This is the lambda@edge function for origin request traffic. It will perform all saml SP operations for ensuring
  * that the user bears JWT proof of saml authentication, else it drives the authentication flow with the IDP.
+ * If the APP_AUTHORIZATION environment/context variable is set to true, it will relinquish the "decision" to make the
+ * redirect to the IDP for authentication to the app (but will handle all other parts of the SP/IDP process).
  * 
  * NOTE: It would have been preferable to have designated this function for viewer requests so that it could 
  * intercept EVERY request instead of potentially being bypassed in favor of cached content. However, the content
@@ -50,16 +57,25 @@ const debugPrint = (value:string) => {
  * @returns 
  */
 export const handler =  async (event:any) => {
+  console.log(`EVENT: ${JSON.stringify(event, null, 2)}`);
 
   await checkCache(cachedKeys);
 
   const originRequest = event.Records[0].cf.request;
   const cloudfrontDomain = event.Records[0].cf.config.distributionDomainName;
+    
+  let appAuth = true;
+  const customHdr = originRequest?.origin?.custom?.customHeaders?.app_authorization;
+  if(customHdr && 'true' == customHdr[0].value) {
+    appAuth = true;
+  }
+  else {
+    const { APP_AUTHORIZATION='false' } = process.env;
+    appAuth = APP_AUTHORIZATION == 'true';
+  }
 
-  const rootUrl = `https://${cloudfrontDomain}`;
-  samlTools.setAssertUrl(`${rootUrl}/assert`);
-
-  debugPrint(JSON.stringify(event, null, 2));
+  const relayDomain = `https://${cloudfrontDomain}`;
+  samlTools.setAssertUrl(`${relayDomain}/assert`);
 
   try {
     let response;
@@ -67,11 +83,23 @@ export const handler =  async (event:any) => {
     const qsparms = querystring ? new URLSearchParams(querystring) : null;
     console.log(`uri: ${uri}`);
     console.log(`querystring: ${querystring}`);
-    
+    const { LOGIN, LOGOUT, ASSERT, METADATA, FAVICON } = AUTH_PATHS;
+
+    const getAppLoginUrl = ():string => {
+      const relay_state = encodeURIComponent(relayDomain + uri + (querystring ? `?${querystring}` : ''));
+      return `${relayDomain}${AUTH_PATHS.LOGIN}?relay_state=${relay_state}`;
+    }
+
+    const getAppLogoutUrl = ():string => `${relayDomain}${AUTH_PATHS.LOGOUT}`;
+
+    const addHeader = (response:any, keyname:string, value:string) => {
+      response.headers[keyname] = [{ key: keyname, value }];
+    }
+
     switch(uri) {
-      case '/login':
+      case LOGIN:
         console.log('User is not authenticated, initiate SAML authentication...');
-        var relayState:string|null = decodeURIComponent(qsparms ? qsparms.get('relay_state') || '' : rootUrl);
+        var relayState:string|null = decodeURIComponent(qsparms ? qsparms.get('relay_state') || '' : relayDomain);
         const loginUrl = await samlTools.createLoginRequestUrl(relayState);
         response = {
           status: '302',
@@ -83,7 +111,7 @@ export const handler =  async (event:any) => {
         debugPrint(`response: ${JSON.stringify(response, null, 2)}`);
         break;
 
-      case '/logout':
+      case LOGOUT:
         const target = qsparms ? qsparms.get('target') : null;
         if(target == 'idp') {
           // Second step: logout with the Idp
@@ -103,7 +131,7 @@ export const handler =  async (event:any) => {
             status: '302',
             statusDescription: 'Found',
             headers: {
-              location: [{ key: 'Location', value: `${rootUrl}/logout?target=idp` }],
+              location: [{ key: 'Location', value: `${relayDomain}/logout?target=idp` }],
             }
           }
           jwtTools.setCookieInvalidationInResponse(response);
@@ -111,11 +139,11 @@ export const handler =  async (event:any) => {
         }
         break;
 
-      case '/assert':
+      case ASSERT:
         const result:SendAssertResult|null = await samlTools.sendAssert(originRequest);
         const message = `Authentication successful. result: ${JSON.stringify(result, null, 2)}`
         var { samlAssertResponse, relayState } = result;
-        relayState = decodeURIComponent(relayState || rootUrl);
+        relayState = decodeURIComponent(relayState || relayDomain);
         if( ! samlAssertResponse) break;
                 
         debugPrint(message);
@@ -140,7 +168,7 @@ export const handler =  async (event:any) => {
         
         break;
 
-      case '/metadata':
+      case METADATA:
         response = {
           status: 200,
           statusDescription: 'OK',
@@ -151,7 +179,7 @@ export const handler =  async (event:any) => {
         }
         break;
 
-      case '/favicon.ico':
+      case FAVICON:
         // This path just dirties up logs, so intercept it here and return a blank.
         // Can't seem to get an actual favicon.ico to work from here anyway.
         response = {
@@ -166,44 +194,24 @@ export const handler =  async (event:any) => {
         if (validToken) {
           // Tokens are valid, so consider the user authenticated and pass through to the origin.
           console.log('Request has valid JWT');
-          response = originRequest;
-          response.headers['authenticated'] = 'true';
+          response = originRequest;          
+          addHeader(response, 'authenticated', 'true');
 
           // Send the entire token in a single header
-          response.headers['user-details'] = [{
-            key: "User-Details",
-            value: `${Buffer.from(JSON.stringify(validToken, null, 2)).toString('base64')}`
-          }];
+          const userDetails = `${Buffer.from(JSON.stringify(validToken, null, 2)).toString('base64')}`;
+          addHeader(response, 'user-details', userDetails);
 
           // Also send the individual claims in separate headers, as mod_shib would.
           const { user: { eduPersonPrincipalName, buPrincipal, eduPersonAffiliation, eduPersonEntitlement } } = validToken[JwtTools.TOKEN_NAME];
-
-          response.headers['eduPersonPrincipalName'] = [{
-            key: 'eduPersonPrincipalName',
-            value: eduPersonPrincipalName
-          }];
-          response.headers['buPrincipal'] = [{
-            key: 'buPrincipal',
-            value: buPrincipal
-          }];
-          response.headers['eduPersonAffiliation'] = [{
-            key: 'eduPersonAffiliation',
-            value: eduPersonAffiliation.join(';')
-          }];
-          response.headers['eduPersonEntitlement'] = [{
-            key: 'eduPersonEntitlement',
-            value: eduPersonEntitlement.join(';')
-          }];
-
-          response.headers['root-url'] = [{
-            key: 'Root-URL',
-            value: encodeURIComponent(rootUrl)
-          }];
-
-          response.status = 200;
+          addHeader(response, 'eduPersonPrincipalName', eduPersonPrincipalName);
+          addHeader(response, 'buPrincipal', buPrincipal);
+          addHeader(response, 'eduPersonAffiliation', eduPersonAffiliation.join(';'));
+          addHeader(response, 'eduPersonEntitlement', eduPersonEntitlement.join(';'));
+          addHeader(response, APP_LOGIN_HEADER, encodeURIComponent(getAppLoginUrl()));
+          addHeader(response, APP_LOGOUT_HEADER, encodeURIComponent(getAppLogoutUrl()));
 
           console.log(`Valid JWT found - passing through to origin: ${JSON.stringify(response, null, 2)}`);
-        } 
+        }
         else if(afterAuth.toLocaleLowerCase() === 'true') {
           // The saml exchange has just taken place, and the user has authenticated with the IDP, yet either
           // the JWT did not make it into a cookie, or the cookie value did not make it into the header of 
@@ -219,15 +227,22 @@ export const handler =  async (event:any) => {
           }
           console.log(`No valid JWT found after authentication: ${JSON.stringify(response, null, 2)}`); 
         }
+        else if(appAuth) {
+          // The application will "decide" if access to it needs to be authenticated or not, so just pass through the request
+          response = originRequest;
+          addHeader(response, 'authenticated', 'false');
+          addHeader(response, 'login', LOGIN);
+          addHeader(response, APP_LOGIN_HEADER, encodeURIComponent(getAppLoginUrl()));
+          addHeader(response, APP_LOGOUT_HEADER, encodeURIComponent(getAppLogoutUrl()));
+          console.log('App will determine need for auth - passing through to origin');
+        } 
         else {
           // No valid token has been found, and this is not a post authentication redirect - send user to login.
-          const relay_state = encodeURIComponent(rootUrl + uri + (querystring ? `?${querystring}` : ''));
-                      const location = `${rootUrl}/login?relay_state=${relay_state}`;
           response = {
             status: '302',
             statusDescription: 'Found',
             headers: {
-              location: [{ key: 'Location', value: location }],
+              location: [{ key: 'Location', value: getAppLoginUrl() }],
             },
           };
           console.log(`No valid JWT found - redirecting: ${JSON.stringify(response, null, 2)}`); 

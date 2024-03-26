@@ -28,7 +28,7 @@ RUN npm install
 WORKDIR /sp
 
 RUN \
-  esbuild ./lib/lambda/FunctionSpOrigin.ts --bundle --platform=node --outfile=sp.js && \
+  esbuild ./lib/lambda/FunctionSpOrigin.ts --bundle --platform=node --outfile=./lib/sp.js && \
   esbuild ./lib/docker-entrypoint.js --bundle --platform=node --outfile=entrypoint.js
  
 
