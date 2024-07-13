@@ -11,14 +11,15 @@ WORKDIR /sp
 RUN npm install esbuild -g
 
 COPY ./lib/lambda ./lib/lambda/
-COPY ./lib/docker/sp ./lib/
+COPY ./lib/util.ts ./lib/
+COPY ./package.json ./
+COPY ./lib/docker/sp ./lib/sp/
 
 # Creating a dummy context.json file - will keep default imports and destructuring working.
 RUN mkdir ./context && echo '{ "SHIBBOLETH": { "secret": {} } }' > context/context.json
 COPY context/IContext.ts ./context/
 
 # Build the cloudfront origin requests lambda event package
-WORKDIR /sp/lib/lambda
 RUN npm install --save-dev
 
 # Build an express app that impersonates cloudfront and hosts the origin requests lambda event package 
@@ -28,8 +29,8 @@ RUN npm install
 WORKDIR /sp
 
 RUN \
-  esbuild ./lib/lambda/FunctionSpOrigin.ts --bundle --platform=node --outfile=./lib/sp.js && \
-  esbuild ./lib/docker-entrypoint.js --bundle --platform=node --outfile=entrypoint.js
+  esbuild ./lib/lambda/FunctionSpOrigin.ts --bundle --platform=node --outfile=./lib/sp/sp.js && \
+  esbuild ./lib/sp/docker-entrypoint.js --bundle --platform=node --outfile=entrypoint.js
  
 
 # -----------------------------------------------------------

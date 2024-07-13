@@ -8,7 +8,8 @@ import { ParameterTester } from '../util';
 const jwtTools = new JwtTools();
 const context = contextJSON as IContext;
 const debug = process.env?.DEBUG == 'true';
-const { APP_LOGIN_HEADER, APP_LOGOUT_HEADER, CLOUDFRONT_CHALLENGE_HEADER, SHIBBOLETH } = context;
+const { APP_LOGIN_HEADER:appLoginHdr, APP_LOGOUT_HEADER:appLogoutHdr } = process.env;
+const { APP_LOGIN_HEADER=appLoginHdr, APP_LOGOUT_HEADER=appLogoutHdr, CLOUDFRONT_CHALLENGE_HEADER, SHIBBOLETH } = context;
 const { entityId, entryPoint, logoutUrl, idpCert } = SHIBBOLETH as Shibboleth;
 // If running locally - not in lambda@edge function - shibboleth configs can come from the environment.
 const { ENTITY_ID, ENTRY_POINT, LOGOUT_URL, IDP_CERT } = process.env;
@@ -228,8 +229,8 @@ export const handler =  async (event:any) => {
           addHeader(response, 'buPrincipal', buPrincipal);
           addHeader(response, 'eduPersonAffiliation', eduPersonAffiliation.join(';'));
           addHeader(response, 'eduPersonEntitlement', eduPersonEntitlement.join(';'));
-          addHeader(response, APP_LOGIN_HEADER, encodeURIComponent(getAppLoginUrl()));
-          addHeader(response, APP_LOGOUT_HEADER, encodeURIComponent(getAppLogoutUrl()));
+          addHeader(response, APP_LOGIN_HEADER!, encodeURIComponent(getAppLoginUrl()));
+          addHeader(response, APP_LOGOUT_HEADER!, encodeURIComponent(getAppLogoutUrl()));
           // Alternatively, CLOUDFRONT_CHALLENGE_HEADER can be set on HttpOrigin construct directly using the HttpOriginProps.customHeaders attribute
           addHeader(response, CLOUDFRONT_CHALLENGE_HEADER, encodeURIComponent(cachedKeys.cloudfrontChallenge));
 
@@ -255,8 +256,8 @@ export const handler =  async (event:any) => {
           response = originRequest;
           addHeader(response, 'authenticated', 'false');
           addHeader(response, 'login', LOGIN);
-          addHeader(response, APP_LOGIN_HEADER, encodeURIComponent(getAppLoginUrl()));
-          addHeader(response, APP_LOGOUT_HEADER, encodeURIComponent(getAppLogoutUrl()));
+          addHeader(response, APP_LOGIN_HEADER!, encodeURIComponent(getAppLoginUrl()));
+          addHeader(response, APP_LOGOUT_HEADER!, encodeURIComponent(getAppLogoutUrl()));
           // Alternatively, CLOUDFRONT_CHALLENGE_HEADER can be set on HttpOrigin construct directly using the HttpOriginProps.customHeaders attribute
           addHeader(response, CLOUDFRONT_CHALLENGE_HEADER, encodeURIComponent(cachedKeys.cloudfrontChallenge)); 
 

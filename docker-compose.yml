@@ -44,6 +44,8 @@ services:
     environment:
       EXPRESS_PORT: 443
       APP_AUTHORIZATION: ${APP_AUTHORIZATION}
+      APP_LOGIN_HEADER: ${APP_LOGIN_HEADER}
+      APP_LOGOUT_HEADER: ${APP_LOGOUT_HEADER}
       # DEBUG: 'true'
     networks:
       wp-bridge:
